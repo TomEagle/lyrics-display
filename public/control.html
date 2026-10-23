@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lyrics control</title>
+<style>
+  body { margin: 0; background: #151515; color: #e6e6e6; font: 16px/1.4 "Helvetica Neue", Arial, system-ui, sans-serif; }
+  .bar { position: sticky; top: 0; background: #151515; border-bottom: 1px solid #333; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  select, button, input { font: inherit; background: #242424; color: #eee; border: 1px solid #444; border-radius: 6px; padding: 8px 12px; }
+  a.btn { font: inherit; background: #242424; color: #eee; border: 1px solid #444; border-radius: 6px; padding: 8px 12px; text-decoration: none; }
+  button:hover, a.btn:hover { background: #2f2f2f; }
+  a.btn:focus-visible { outline: 2px solid #4a90d9; outline-offset: 1px; }
+  button:focus-visible, select:focus-visible, input:focus-visible, tr:focus-visible { outline: 2px solid #4a90d9; outline-offset: 1px; }
+  input { flex: 1; min-width: 180px; }
+  #now { padding: 12px 16px; font-size: 22px; font-weight: 700; min-height: 1.4em; white-space: pre-line; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: #888; font-weight: 400; font-size: 14px; padding: 6px 16px; }
+  td { padding: 8px 16px; border-top: 1px solid #262626; white-space: pre-line; vertical-align: top; }
+  td.group { color: #9ab; width: 9em; }
+  td.num { width: 5em; color: #888; font-variant-numeric: tabular-nums; }
+  tr.row { cursor: pointer; }
+  tr.row:hover { background: #1f1f1f; }
+  tr.current { background: #24405f !important; color: #fff; }
+  .hint { color: #888; font-size: 14px; padding: 0 16px 12px; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <select id="song" aria-label="Song"></select>
+    <button data-cmd="prev">Previous</button>
+    <button data-cmd="next">Next</button>
+    <button data-cmd="clear">Blank screen</button>
+    <button data-cmd="welcome">Show welcome</button>
+    <button id="reload">Reload songs</button>
+    <a class="btn" href="/join" target="_blank" rel="noopener">Show join QR code</a>
+  </div>
+  <div class="bar">
+    <input id="text" placeholder="Show custom text on all phones">
+    <button id="sendText">Show text</button>
+  </div>
+  <div id="now"></div>
+  <p class="hint">Phones show the welcome page until the first lyric appears. Click a line to show it. Keyboard: → or Space for next, ← for previous, Esc for blank.
+    In your DAW, MIDI note number = line or slide number (note 0 blanks the screen). Program change 1 = song 1.</p>
+  <table>
+    <thead><tr><th>MIDI note</th><th>Section</th><th>Line or slide</th></tr></thead>
+    <tbody id="lines"></tbody>
+  </table>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let songs = [], shownSong = null;
+
+  const send = (cmd, value) => fetch('/api/cmd', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cmd, value })
+  });
+
+  // Which MIDI message selects a song, shown next to each song
+  function midiLabel(n, useBanks) {
+    if (n < 1) return 'no MIDI program';
+    const bank = Math.floor((n - 1) / 128), program = ((n - 1) % 128) + 1;
+    if (useBanks) return bank <= 127 ? `bank ${bank}, program ${program}` : 'no MIDI program';
+    return bank === 0 ? `program ${program}` : 'needs MIDI banks';
+  }
+
+  async function loadSongs() {
+    const data = await (await fetch('/api/songs')).json();
+    songs = data.songs;
+    $('song').innerHTML = '';
+    for (const s of songs) $('song').add(new Option(`${s.number}. ${s.title}  (${midiLabel(s.number, data.useBanks)})`, s.number));
+    shownSong = null;
+    render(data.current);
+  }
+
+  function renderLines(number) {
+    const song = songs.find(s => s.number === number);
+    const tbody = $('lines');
+    tbody.innerHTML = '';
+    if (!song) return;
+    song.lines.forEach((text, i) => {
+      const tr = tbody.insertRow();
+      tr.className = 'row'; tr.tabIndex = 0; tr.dataset.n = i + 1;
+      tr.insertCell().textContent = i + 1;
+      tr.cells[0].className = 'num';
+      tr.insertCell().textContent = (song.groups && song.groups[i]) || '';
+      tr.cells[1].className = 'group';
+      tr.insertCell().textContent = text || '(blank slide)';
+      tr.onclick = () => send('line', i + 1);
+      tr.onkeydown = e => { if (e.key === 'Enter') send('line', i + 1); };
+    });
+    shownSong = number;
+  }
+
+  function render(s) {
+    if (s.songNumber !== shownSong) {
+      if (s.songNumber != null && !songs.some(x => x.number === s.songNumber)) return loadSongs();
+      $('song').value = s.songNumber;
+      renderLines(s.songNumber);
+    }
+    $('now').textContent = s.welcome ? `Welcome page: ${s.welcome.title}` : (s.line || '(blank)');
+    for (const tr of $('lines').rows) tr.classList.toggle('current', +tr.dataset.n === s.lineNo);
+    const cur = document.querySelector('tr.current');
+    if (cur) cur.scrollIntoView({ block: 'nearest' });
+  }
+
+  $('song').onchange = e => send('song', +e.target.value);
+  document.querySelectorAll('[data-cmd]').forEach(b => b.onclick = () => send(b.dataset.cmd));
+  $('reload').onclick = async () => { await send('reload'); loadSongs(); };
+  $('sendText').onclick = () => send('text', $('text').value);
+  $('text').onkeydown = e => { if (e.key === 'Enter') send('text', $('text').value); };
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); send('next'); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); send('prev'); }
+    else if (e.key === 'Escape') send('clear');
+  });
+
+  loadSongs().then(() => {
+    const es = new EventSource('/events');
+    es.onmessage = e => render(JSON.parse(e.data));
+  });
+</script>
+</body>
+</html>

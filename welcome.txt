@@ -1,0 +1,9 @@
+# Welcome page shown on phones before the lyrics start.
+# The first line is the heading; the lines after it are the message.
+# Lines starting with # are ignored. Edit in Notepad and save; changes show
+# the next time the welcome page is sent (or when a phone reconnects).
+Welcome to worship
+The song lyrics will appear here when the music starts.
+
+Keep this page open. The words change by themselves.
+Use A− and A+ at the top to change the text size.

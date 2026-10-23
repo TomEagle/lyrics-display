@@ -1,0 +1,11 @@
+{
+  "name": "lyrics-display",
+  "version": "1.0.0",
+  "description": "Show lyrics on phone browsers, driven by MIDI or OSC from a DAW",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "relay": "node relay.js" },
+  "dependencies": { "qrcode": "^1.5.3" },
+  "engines": { "node": ">=18" },
+  "optionalDependencies": { "@julusian/midi": "^3.0.0" },
+  "license": "MIT"
+}
