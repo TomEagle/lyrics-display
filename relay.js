@@ -25,6 +25,9 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 const page = fs.readFileSync(path.join(__dirname, 'public', 'index.html'));
 const clients = new Set();
 let latest = JSON.stringify({ title: '', line: '', next: '', group: '', lineNo: 0 });
+let logo = null; // { type, data, version } sent by the church computer
+const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
+const LOGO_MAX = 2 * 1024 * 1024;
 
 function authorized(req) {
   const given = Buffer.from(req.headers.authorization || '');
@@ -68,8 +71,33 @@ const server = http.createServer((req, res) => {
       try {
         const next = JSON.stringify(JSON.parse(body));
         if (next !== latest) { latest = next; broadcast(); }
-        res.writeHead(204); res.end();
+        res.writeHead(204, { 'X-Logo-Version': logo ? logo.version : '' }); res.end();
       } catch { res.writeHead(400); res.end(); }
+    });
+    return;
+  }
+
+  if (pathname === '/logo' && req.method === 'GET') {
+    if (!logo) { res.writeHead(404); return res.end(); }
+    res.writeHead(200, {
+      'Content-Type': logo.type, 'Cache-Control': 'no-cache',
+      'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+    });
+    return res.end(logo.data);
+  }
+
+  if (pathname === '/logo' && (req.method === 'POST' || req.method === 'DELETE')) {
+    if (!authorized(req)) { res.writeHead(401); return res.end(); }
+    if (req.method === 'DELETE') { logo = null; res.writeHead(204); return res.end(); }
+    const type = String(req.headers['content-type'] || '').split(';')[0].trim();
+    if (!LOGO_TYPES.has(type)) { res.writeHead(415); return res.end(); }
+    const chunks = [];
+    let size = 0;
+    req.on('data', c => { size += c.length; if (size > LOGO_MAX) req.destroy(); else chunks.push(c); });
+    req.on('end', () => {
+      logo = { type, data: Buffer.concat(chunks), version: String(req.headers['x-logo-version'] || '') };
+      log('Logo received');
+      res.writeHead(204); res.end();
     });
     return;
   }
