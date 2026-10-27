@@ -36,6 +36,11 @@
     <a class="btn" href="/join" target="_blank" rel="noopener">Show join QR code</a>
   </div>
   <div class="bar">
+    <label for="setlist">Set list in use</label>
+    <select id="setlist"></select>
+    <a class="btn" href="/setlist" target="_blank" rel="noopener">Edit set lists</a>
+  </div>
+  <div class="bar">
     <input id="text" placeholder="Show custom text on all phones">
     <button id="sendText">Show text</button>
   </div>
@@ -67,6 +72,7 @@
   async function loadSongs() {
     const data = await (await fetch('/api/songs')).json();
     songs = data.songs;
+    loadSetlists();
     $('song').innerHTML = '';
     for (const s of songs) $('song').add(new Option(`${s.number}. ${s.title}  (${midiLabel(s.number, data.useBanks)})`, s.number));
     shownSong = null;
@@ -103,6 +109,27 @@
     const cur = document.querySelector('tr.current');
     if (cur) cur.scrollIntoView({ block: 'nearest' });
   }
+
+  // Which set list MIDI picks songs from
+  async function loadSetlists() {
+    try {
+      const data = await (await fetch('/api/setlists')).json();
+      const sel = $('setlist');
+      sel.innerHTML = '';
+      sel.add(new Option('None (numbered files in the songs folder)', ''));
+      for (const name of data.setlists) sel.add(new Option(name, name));
+      sel.value = data.active;
+    } catch (e) {}
+  }
+  $('setlist').onchange = async e => {
+    await fetch('/api/setlist/activate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: e.target.value })
+    });
+    loadSongs();
+  };
+  // Coming back from the set list page: show its changes
+  window.addEventListener('focus', () => loadSongs());
 
   $('song').onchange = e => send('song', +e.target.value);
   document.querySelectorAll('[data-cmd]').forEach(b => b.onclick = () => send(b.dataset.cmd));
