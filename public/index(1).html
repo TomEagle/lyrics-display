@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Lyrics</title>
+<style>
+  :root { --scale: 1; }
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; }
+  body {
+    display: flex; flex-direction: column; box-sizing: border-box;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+             env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    font-family: "Helvetica Neue", Arial, system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-text-size-adjust: 100%;
+  }
+  header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: #8a8a8a; font-size: 14px; }
+  #status { width: 10px; height: 10px; border-radius: 50%; background: #c62828; flex: none; }
+  #status.on { background: #2e7d32; }
+  #group { color: #c9c9c9; flex: none; }
+  #title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  button {
+    background: #1c1c1c; color: #bbb; border: 1px solid #3a3a3a; border-radius: 6px;
+    font: inherit; padding: 6px 10px; min-width: 40px;
+  }
+  main {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    padding: 12px 18px 32px; text-align: center;
+  }
+  #line {
+    font-size: calc(min(8.5vw, 12vh) * var(--scale));
+    font-weight: 700; line-height: 1.18; overflow-wrap: break-word; white-space: pre-line;
+  }
+  #next {
+    margin-top: 1em;
+    font-size: calc(min(5vw, 7vh) * var(--scale));
+    color: #6f6f6f; line-height: 1.25; overflow-wrap: break-word; white-space: pre-line;
+  }
+  body.hide-next #next { display: none; }
+  #welcome { display: none; width: 100%; margin: 0 auto; }
+  body.welcome #welcome { display: block; }
+  body.welcome #line, body.welcome #next, body.welcome #title, body.welcome #group { display: none; }
+  #welcomeLogo {
+    display: block; margin: 0 auto 1.2em; width: auto; height: auto;
+    max-width: min(70vw, 420px); max-height: 30vh; object-fit: contain;
+  }
+  #welcomeLogo[hidden] { display: none; }
+  #welcomeTitle {
+    margin: 0 0 .6em; font-size: calc(min(9vw, 12vh) * var(--scale));
+    font-weight: 700; line-height: 1.15; overflow-wrap: break-word;
+  }
+  #welcomeMessage {
+    margin: 0 auto; max-width: 24em; font-size: calc(min(5vw, 6.5vh) * var(--scale));
+    color: #c4c4c4; line-height: 1.4; white-space: pre-line; overflow-wrap: break-word;
+  }
+  #offline { display: none; color: #e57373; font-size: 15px; text-align: center; padding-bottom: 12px; }
+  body.offline #offline { display: block; }
+</style>
+</head>
+<body>
+  <header>
+    <span id="status" title="Connection"></span>
+    <span id="title"></span>
+    <span id="group"></span>
+    <button id="smaller" aria-label="Smaller text">A−</button>
+    <button id="bigger" aria-label="Bigger text">A+</button>
+    <button id="toggleNext"></button>
+  </header>
+  <main>
+    <section id="welcome">
+      <img id="welcomeLogo" alt="" hidden>
+      <h1 id="welcomeTitle"></h1>
+      <p id="welcomeMessage"></p>
+    </section>
+    <div id="line"></div>
+    <div id="next"></div>
+  </main>
+  <div id="offline">Not connected. Check that this phone is on the same Wi‑Fi as the computer.</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let scale = 1, showNext = true;
+  try {
+    scale = parseFloat(localStorage.getItem('lyrics.scale')) || 1;
+    showNext = localStorage.getItem('lyrics.showNext') !== '0';
+  } catch (e) {}
+
+  function applySettings() {
+    document.documentElement.style.setProperty('--scale', scale);
+    document.body.classList.toggle('hide-next', !showNext);
+    $('toggleNext').textContent = showNext ? 'Hide next' : 'Show next';
+    try {
+      localStorage.setItem('lyrics.scale', scale);
+      localStorage.setItem('lyrics.showNext', showNext ? '1' : '0');
+    } catch (e) {}
+  }
+  $('smaller').onclick = () => { scale = Math.max(0.5, +(scale - 0.1).toFixed(2)); applySettings(); };
+  $('bigger').onclick = () => { scale = Math.min(2.5, +(scale + 0.1).toFixed(2)); applySettings(); };
+  $('toggleNext').onclick = () => { showNext = !showNext; applySettings(); };
+  applySettings();
+
+  function setOnline(on) {
+    $('status').classList.toggle('on', on);
+    document.body.classList.toggle('offline', !on);
+  }
+
+  // Logo above the welcome heading (logo.png next to the program). Retries while the relay receives it.
+  let logoVersion = null, logoTries = 0, logoTimer;
+  function showLogo(v) {
+    if (v === logoVersion) return;
+    logoVersion = v; logoTries = 0; clearTimeout(logoTimer);
+    const img = $('welcomeLogo');
+    if (!v) { img.hidden = true; img.removeAttribute('src'); return; }
+    const load = () => { img.src = '/logo?v=' + encodeURIComponent(v) + '&n=' + logoTries; };
+    img.onload = () => { img.hidden = false; };
+    img.onerror = () => {
+      img.hidden = true;
+      if (++logoTries <= 10) logoTimer = setTimeout(load, 3000);
+    };
+    load();
+  }
+
+  let es;
+  function connect() {
+    if (es) es.close();
+    es = new EventSource('/events');
+    es.onopen = () => setOnline(true);
+    es.onerror = () => setOnline(false); // EventSource retries by itself
+    es.onmessage = e => {
+      const s = JSON.parse(e.data);
+      document.body.classList.toggle('welcome', !!s.welcome);
+      if (s.welcome) {
+        $('welcomeTitle').textContent = s.welcome.title || '';
+        $('welcomeMessage').textContent = s.welcome.message || '';
+        showLogo(s.welcome.logo || '');
+      }
+      $('title').textContent = s.title || '';
+      $('group').textContent = s.group || '';
+      $('line').textContent = s.line || '';
+      $('next').textContent = s.next || '';
+      setOnline(true);
+    };
+  }
+  connect();
+
+  // Phones pause background tabs; reconnect when the page comes back.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (!es || es.readyState === EventSource.CLOSED) connect();
+      keepAwake();
+    }
+  });
+
+  // Keep the screen on where the browser allows it (needs HTTPS on most phones).
+  async function keepAwake() {
+    try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch (e) {}
+  }
+  keepAwake();
+  document.addEventListener('click', keepAwake, { once: true });
+</script>
+</body>
+</html>
